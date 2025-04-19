@@ -15,11 +15,16 @@ public class LobbyRelayConnector : MonoBehaviour
     public int maxPlayers = 4;
     private string playerName;
 
-    async void Start()
-    {
-        await InitializeServicesAsync();
-        await TryJoinOrCreateLobby();
-    }
+    // async void Start()
+    // {
+    //     await InitializeServicesAsync();
+    //     await TryJoinOrCreateLobby();
+    // }
+    public async void Init()
+{
+    await InitializeServicesAsync();
+    await TryJoinOrCreateLobby();
+}
 
     async Task InitializeServicesAsync()
     {
@@ -137,7 +142,7 @@ public class LobbyRelayConnector : MonoBehaviour
         NetworkManager.Singleton.StartHost();
 
         // Load the multiplayer game scene
-        NetworkManager.Singleton.SceneManager.LoadScene("GameScene", UnityEngine.SceneManagement.LoadSceneMode.Single);
+        NetworkManager.Singleton.SceneManager.LoadScene("GameLobby", UnityEngine.SceneManagement.LoadSceneMode.Single);
 
         Debug.Log($"Lobby created and hosting. Join code: {joinCode}");
     }

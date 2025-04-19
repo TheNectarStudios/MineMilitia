@@ -10,6 +10,7 @@ public class PlayerNameInput : MonoBehaviour
 
     void Start()
     {
+        PlayerPrefs.DeleteAll();
         if (PlayerPrefs.HasKey("PlayerName"))
         {
             nameInputPanel.SetActive(false);
@@ -33,9 +34,11 @@ public class PlayerNameInput : MonoBehaviour
         }
     }
 
-    IEnumerator EnableLobbyConnectorNextFrame()
-    {
-        yield return null; // Wait 1 frame to let UI close properly
-        lobbyConnector.enabled = true;
-    }
+IEnumerator EnableLobbyConnectorNextFrame()
+{
+    yield return null; // Let UI finish
+
+    lobbyConnector.enabled = true;
+    lobbyConnector.Init(); // Explicitly start lobby logic
+}
 }

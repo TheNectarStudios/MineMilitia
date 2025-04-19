@@ -9,6 +9,9 @@ EditorBuildSettings:
     path: Assets/Scenes/MultiPlayer First Testing/MainMenu.unity
     guid: 281a0b51e1c4a604da28aa444602c2ef
   - enabled: 1
-    path: Assets/Scenes/MultiPlayer First Testing/GameScene.unity
+    path: Assets/Scenes/MultiPlayer First Testing/GameLobby.unity
     guid: de4f7f63ff0066649bd28cce7296fc6e
+  - enabled: 1
+    path: Assets/Scenes/MultiPlayer First Testing/GameScene.unity
+    guid: 2eca30067e35ff445ac1535eff272f13
   m_configObjects: {}
