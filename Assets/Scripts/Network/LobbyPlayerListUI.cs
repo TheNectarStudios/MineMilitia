@@ -15,20 +15,19 @@ public class LobbyPlayerListUI : MonoBehaviour
     public GameObject playerNamePrefab;
     public float refreshRate = 1f;
 
-    private string currentLobbyId;
-    private string localPlayerId;
-    private Dictionary<string, GameObject> playerUIObjects = new Dictionary<string, GameObject>();
-
-    // References to the already existing buttons in the scene
     public Button leaveButton;
     public Button readyButton;
+
+    private string currentLobbyId;
+    private string localPlayerId;
+    private bool isLobbyActive = false; // NEW: Used to control heartbeat loop
+    private Dictionary<string, GameObject> playerUIObjects = new Dictionary<string, GameObject>();
 
     async void Start()
     {
         currentLobbyId = PlayerPrefs.GetString("CurrentLobbyId", string.Empty);
         localPlayerId = AuthenticationService.Instance.PlayerId;
 
-        // Debug to check the lobby ID
         Debug.Log($"Current Lobby ID: {currentLobbyId}");
 
         if (string.IsNullOrEmpty(currentLobbyId))
@@ -41,15 +40,13 @@ public class LobbyPlayerListUI : MonoBehaviour
         StartCoroutine(PlayerListUpdater());
     }
 
-    // Fetch the current lobby details
     async Task InitializeAndFetchLobby()
     {
         try
         {
-            // Debug log to check if lobby is being fetched correctly
             Debug.Log($"Attempting to fetch lobby with ID: {currentLobbyId}");
-
             var lobby = await LobbyService.Instance.GetLobbyAsync(currentLobbyId);
+
             if (lobby != null)
             {
                 Debug.Log($"Lobby fetched: {lobby.Name}");
@@ -63,7 +60,8 @@ public class LobbyPlayerListUI : MonoBehaviour
             if (lobby.HostId == localPlayerId)
             {
                 Debug.Log("Starting heartbeat as host.");
-                _ = HeartbeatLobby(currentLobbyId);  // Asynchronously start the heartbeat for the host
+                isLobbyActive = true;
+                _ = HeartbeatLobby(currentLobbyId);
             }
         }
         catch (System.Exception e)
@@ -72,26 +70,32 @@ public class LobbyPlayerListUI : MonoBehaviour
         }
     }
 
-    // Heartbeat function to keep the lobby alive
+    // 💓 Safe heartbeat loop that respects lobby status
     async Task HeartbeatLobby(string lobbyId)
     {
-        while (true)
+        while (isLobbyActive)
         {
             try
             {
                 await LobbyService.Instance.SendHeartbeatPingAsync(lobbyId);
                 Debug.Log("Heartbeat sent.");
             }
-            catch (System.Exception e)
+            catch (LobbyServiceException e)
             {
                 Debug.LogError($"Heartbeat error: {e.Message}");
+
+                if (e.Reason == LobbyExceptionReason.LobbyNotFound)
+                {
+                    Debug.LogWarning("Lobby not found. Stopping heartbeat.");
+                    isLobbyActive = false;
+                    break;
+                }
             }
 
-            await Task.Delay(15000);  // Wait for 15 seconds before sending another heartbeat
+            await Task.Delay(15000);
         }
     }
 
-    // Coroutine to keep refreshing the player list
     IEnumerator PlayerListUpdater()
     {
         while (true)
@@ -101,14 +105,9 @@ public class LobbyPlayerListUI : MonoBehaviour
         }
     }
 
-    // Function to update the player list UI
     async Task UpdatePlayerList()
     {
-        if (string.IsNullOrEmpty(currentLobbyId))
-        {
-            Debug.LogWarning("currentLobbyId is empty or null.");
-            return;
-        }
+        if (string.IsNullOrEmpty(currentLobbyId)) return;
 
         try
         {
@@ -121,10 +120,9 @@ public class LobbyPlayerListUI : MonoBehaviour
 
             Debug.Log($"Fetched Lobby: {currentLobby.Name}");
             var players = currentLobby.Players;
-
             HashSet<string> currentPlayerIds = new HashSet<string>(players.Select(p => p.Id));
 
-            // Remove players that left
+            // Remove players who left
             var playersToRemove = playerUIObjects.Keys.Except(currentPlayerIds).ToList();
             foreach (var playerId in playersToRemove)
             {
@@ -132,95 +130,42 @@ public class LobbyPlayerListUI : MonoBehaviour
                 playerUIObjects.Remove(playerId);
             }
 
-            // Add or update players
             foreach (var player in players)
             {
                 string playerId = player.Id;
-                string name = "Unnamed";
-                bool isReady = false;
+                string name = player.Data?.ContainsKey("name") == true ? player.Data["name"].Value : "Unnamed";
+                bool isReady = player.Data?.ContainsKey("ready") == true && player.Data["ready"].Value == "true";
 
-                // Null checks for player data
-                if (player.Data != null)
-                {
-                    if (player.Data.ContainsKey("name"))
-                    {
-                        name = player.Data["name"].Value;
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"Player {playerId} does not have a 'name' in their data.");
-                    }
-
-                    if (player.Data.ContainsKey("ready"))
-                    {
-                        isReady = player.Data["ready"].Value == "true";
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"Player {playerId} does not have a 'ready' status in their data.");
-                    }
-                }
-                else
-                {
-                    Debug.LogWarning($"Player {playerId} has no data.");
-                }
-
-                // If player is not in UI dictionary, add them
                 if (!playerUIObjects.ContainsKey(playerId))
                 {
-                    // Instantiate new player UI
                     var go = Instantiate(playerNamePrefab, playerListParent);
                     var playerNameText = go.GetComponentInChildren<TMP_Text>();
                     if (playerNameText != null)
-                    {
                         playerNameText.text = name;
-                    }
-                    else
-                    {
-                        Debug.LogError("Player Name Text is missing in the prefab.");
-                    }
 
-                    // Find buttons already in the scene
-                    Button returnBtn = leaveButton;
-                    Button readyBtn = readyButton;
-
-                    if (returnBtn == null || readyBtn == null)
-                    {
-                        Debug.LogError("Buttons (LeaveButton/ReadyButton) are missing.");
-                    }
-
-                    // Handle button actions for the local player
+                    // These buttons are already in the scene, so we don’t instantiate them
                     if (playerId == localPlayerId)
                     {
-                        returnBtn?.gameObject.SetActive(true); // Show return button for local player
-                        readyBtn?.gameObject.SetActive(true);  // Show ready button for local player
+                        leaveButton?.gameObject.SetActive(true);
+                        readyButton?.gameObject.SetActive(true);
 
-                        returnBtn?.onClick.AddListener(() => ReturnToMainMenu());
-                        readyBtn?.onClick.AddListener(() => ToggleReady(readyBtn));
-                    }
-                    else
-                    {
-                        returnBtn?.gameObject.SetActive(false); // Hide the return button for non-local players
-                        readyBtn?.gameObject.SetActive(false);  // Hide the ready button for non-local players
-                    }
+                        leaveButton.onClick.RemoveAllListeners();
+                        leaveButton.onClick.AddListener(() => ReturnToMainMenu());
 
-                    // Set initial ready button state
-                    if (readyBtn != null)
-                    {
-                        readyBtn.GetComponentInChildren<TMP_Text>().text = isReady ? "Ready ✔" : "Not Ready";
+                        readyButton.onClick.RemoveAllListeners();
+                        readyButton.onClick.AddListener(() => ToggleReady(readyButton));
+
+                        // Initial text state
+                        if (readyButton != null)
+                            readyButton.GetComponentInChildren<TMP_Text>().text = isReady ? "Ready ✔" : "Not Ready";
                     }
 
                     playerUIObjects[playerId] = go;
                 }
                 else
                 {
-                    // Update existing player UI
                     var go = playerUIObjects[playerId];
                     go.GetComponentInChildren<TMP_Text>().text = name;
-
-                    var readyBtn = go.GetComponentsInChildren<Button>().FirstOrDefault(b => b.name == "ReadyButton");
-                    if (readyBtn != null)
-                        readyBtn.GetComponentInChildren<TMP_Text>().text = isReady ? "Ready ✔" : "Not Ready";
                 }
             }
         }
@@ -230,9 +175,10 @@ public class LobbyPlayerListUI : MonoBehaviour
         }
     }
 
-    // Function to leave the lobby and go back to the main menu
     async void ReturnToMainMenu()
     {
+        isLobbyActive = false; // 💥 Stop heartbeat before leaving
+
         try
         {
             await LobbyService.Instance.RemovePlayerAsync(currentLobbyId, localPlayerId);
@@ -246,12 +192,11 @@ public class LobbyPlayerListUI : MonoBehaviour
         UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
     }
 
-    // Toggle the ready status
     async void ToggleReady(Button readyButton)
     {
         try
         {
-            var newStatus = readyButton.GetComponentInChildren<TMP_Text>().text != "Ready ✔";
+            bool newStatus = readyButton.GetComponentInChildren<TMP_Text>().text != "Ready ✔";
 
             await LobbyService.Instance.UpdatePlayerAsync(currentLobbyId, localPlayerId, new UpdatePlayerOptions
             {
