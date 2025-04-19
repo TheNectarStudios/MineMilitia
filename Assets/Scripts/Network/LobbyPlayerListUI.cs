@@ -4,20 +4,22 @@ using Unity.Services.Lobbies.Models;
 using Unity.Services.Lobbies;
 using Unity.Services.Authentication;
 using TMPro;
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Linq;
 
 public class LobbyPlayerListUI : MonoBehaviour
 {
     public Transform playerListParent; // UI parent
     public GameObject playerNamePrefab; // UI prefab with TMP_Text
-    public float refreshRate = 5f;
+    public float refreshRate = 1f; // Faster updates to 1 second
 
-    private string currentLobbyId; // Store the current lobby ID
+    private string currentLobbyId;
+    private Dictionary<string, GameObject> playerUIObjects = new Dictionary<string, GameObject>(); // key = playerId
 
     async void Start()
     {
-        // Retrieve the current lobby ID from PlayerPrefs
         currentLobbyId = PlayerPrefs.GetString("CurrentLobbyId", string.Empty);
 
         if (string.IsNullOrEmpty(currentLobbyId))
@@ -27,7 +29,7 @@ public class LobbyPlayerListUI : MonoBehaviour
         }
 
         await InitializeAndFetchLobby();
-        InvokeRepeating(nameof(UpdatePlayerList), 0f, refreshRate);  // Refresh the list periodically
+        StartCoroutine(PlayerListUpdater());
     }
 
     async Task InitializeAndFetchLobby()
@@ -36,6 +38,12 @@ public class LobbyPlayerListUI : MonoBehaviour
         {
             var lobby = await LobbyService.Instance.GetLobbyAsync(currentLobbyId);
             Debug.Log($"Lobby fetched: {lobby.Name}");
+
+            if (lobby.HostId == AuthenticationService.Instance.PlayerId)
+            {
+                Debug.Log("Starting heartbeat as host.");
+                _ = HeartbeatLobby(currentLobbyId);
+            }
         }
         catch (System.Exception e)
         {
@@ -43,41 +51,70 @@ public class LobbyPlayerListUI : MonoBehaviour
         }
     }
 
-    async void UpdatePlayerList()
+    async Task HeartbeatLobby(string lobbyId)
     {
-        Debug.Log("UpdatePlayerList() called.");
+        while (true)
+        {
+            try
+            {
+                await LobbyService.Instance.SendHeartbeatPingAsync(lobbyId);
+                Debug.Log("Heartbeat sent.");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Heartbeat error: {e.Message}");
+            }
+
+            await Task.Delay(15000); // every 15 seconds
+        }
+    }
+
+    IEnumerator PlayerListUpdater()
+    {
+        while (true)
+        {
+            yield return new WaitForSecondsRealtime(refreshRate);
+            _ = UpdatePlayerList(); // fire and forget
+        }
+    }
+
+    async Task UpdatePlayerList()
+    {
         if (string.IsNullOrEmpty(currentLobbyId))
         {
             Debug.LogWarning("currentLobbyId is empty or null.");
             return;
         }
-        else
-        {
-            Debug.Log($"Fetching Lobby with ID: {currentLobbyId}");
-        }
 
         try
         {
             var currentLobby = await LobbyService.Instance.GetLobbyAsync(currentLobbyId);
-            Debug.Log($"Fetched Lobby: {currentLobby.Name} with {currentLobby.Players.Count} players.");
+            var players = currentLobby.Players;
 
-            // Clear existing UI elements
-            foreach (Transform child in playerListParent)
-                Destroy(child.gameObject);
+            HashSet<string> currentPlayerIds = new HashSet<string>(players.Select(p => p.Id));
 
-            // Populate the player list UI with player names
-            foreach (var player in currentLobby.Players)
+            // Remove players that have left
+            var playersToRemove = playerUIObjects.Keys.Except(currentPlayerIds).ToList();
+            foreach (var playerId in playersToRemove)
             {
-                if (player.Data != null && player.Data.ContainsKey("name"))
+                Destroy(playerUIObjects[playerId]);
+                playerUIObjects.Remove(playerId);
+            }
+
+            // Add new players or update existing ones
+            foreach (var player in players)
+            {
+                string name = player.Data != null && player.Data.ContainsKey("name") ? player.Data["name"].Value : "Unnamed";
+
+                if (!playerUIObjects.ContainsKey(player.Id))
                 {
                     var go = Instantiate(playerNamePrefab, playerListParent);
-                    var text = go.GetComponentInChildren<TMP_Text>();
-                    text.text = player.Data["name"].Value;
-                    Debug.Log($"Player found: {player.Data["name"].Value}");
+                    go.GetComponentInChildren<TMP_Text>().text = name;
+                    playerUIObjects[player.Id] = go;
                 }
                 else
                 {
-                    Debug.LogWarning($"Player data doesn't contain 'name'.");
+                    playerUIObjects[player.Id].GetComponentInChildren<TMP_Text>().text = name;
                 }
             }
         }

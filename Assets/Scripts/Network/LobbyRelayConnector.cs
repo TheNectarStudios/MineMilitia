@@ -7,6 +7,7 @@ using Unity.Networking.Transport.Relay;
 using Unity.Services.Core;
 using Unity.Services.Authentication;
 using Unity.Services.Relay;
+using UnityEngine.SceneManagement; // This is important for scene management
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -15,16 +16,11 @@ public class LobbyRelayConnector : MonoBehaviour
     public int maxPlayers = 4;
     private string playerName;
 
-    // async void Start()
-    // {
-    //     await InitializeServicesAsync();
-    //     await TryJoinOrCreateLobby();
-    // }
     public async void Init()
-{
-    await InitializeServicesAsync();
-    await TryJoinOrCreateLobby();
-}
+    {
+        await InitializeServicesAsync();
+        await TryJoinOrCreateLobby();
+    }
 
     async Task InitializeServicesAsync()
     {
@@ -141,8 +137,8 @@ public class LobbyRelayConnector : MonoBehaviour
         // Start hosting the game
         NetworkManager.Singleton.StartHost();
 
-        // Load the multiplayer game scene
-        NetworkManager.Singleton.SceneManager.LoadScene("GameLobby", UnityEngine.SceneManagement.LoadSceneMode.Single);
+        // Now use SceneManager to load the scene
+        SceneManager.LoadScene("GameLobby");
 
         Debug.Log($"Lobby created and hosting. Join code: {joinCode}");
     }
