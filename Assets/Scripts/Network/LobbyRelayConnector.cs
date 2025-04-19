@@ -7,7 +7,6 @@ using Unity.Networking.Transport.Relay;
 using Unity.Services.Core;
 using Unity.Services.Authentication;
 using Unity.Services.Relay;
-using Unity.Services.Lobby;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
