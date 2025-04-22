@@ -1,6 +1,7 @@
 using Unity.Netcode;
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody2D))]
 public class PlayerMovement2D : NetworkBehaviour
 {
     public float moveSpeed = 5f;
@@ -10,13 +11,20 @@ public class PlayerMovement2D : NetworkBehaviour
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
+        
+        // Optional: Disable camera follow or extra logic on non-local players
+        if (!IsOwner)
+        {
+            // Example: disable a camera follow script
+            // GetComponent<PlayerCameraFollow>()?.enabled = false;
+        }
     }
 
     void Update()
     {
-        if (!IsOwner) return; // Only let the local player control their own cube
+        if (!IsOwner) return; // Only local player processes input
 
-        // Get movement input (WASD / Arrow Keys)
+        // Get WASD / Arrow key input
         moveInput.x = Input.GetAxisRaw("Horizontal");
         moveInput.y = Input.GetAxisRaw("Vertical");
         moveInput.Normalize();
@@ -24,9 +32,9 @@ public class PlayerMovement2D : NetworkBehaviour
 
     void FixedUpdate()
     {
-        if (IsOwner)
-        {
-            rb.MovePosition(rb.position + moveInput * moveSpeed * Time.fixedDeltaTime);
-        }
+        if (!IsOwner) return;
+
+        Vector2 movement = moveInput * moveSpeed * Time.fixedDeltaTime;
+        rb.MovePosition(rb.position + movement);
     }
 }
